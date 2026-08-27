@@ -113,7 +113,6 @@ export function MainChart({
     chartRef.current = chart;
     onChartReady?.(chart);
 
-    // Resize observer
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
@@ -156,7 +155,6 @@ export function MainChart({
     if (!chartRef.current || candles.length === 0) return;
     const chart = chartRef.current;
 
-    // Remove old main series
     if (mainSeriesRef.current) {
       try {
         chart.removeSeries(mainSeriesRef.current);
@@ -231,19 +229,17 @@ export function MainChart({
 
     mainSeriesRef.current = series;
 
-    // 🔥 只在首次加載時自動縮放，之後由用戶控制
     if (isFirstLoadRef.current) {
       chart.timeScale().fitContent();
       isFirstLoadRef.current = false;
     }
-  }, [chartType, candles]);
+  }, [chartType]);
 
-  // Volume series - 使用 update 而不是重建
+  // Volume series
   useEffect(() => {
     if (!chartRef.current || candles.length === 0) return;
     const chart = chartRef.current;
 
-    // Remove old volume series
     if (volumeSeriesRef.current) {
       try {
         chart.removeSeries(volumeSeriesRef.current);
@@ -290,7 +286,6 @@ export function MainChart({
     if (!chartRef.current) return;
     const chart = chartRef.current;
 
-    // Clear old indicator series
     indicatorSeriesRef.current.forEach((s) => {
       try {
         chart.removeSeries(s);
@@ -380,7 +375,6 @@ export function MainChart({
         continue;
       }
 
-      // Main pane indicators
       if (result.main.length > 0) {
         const lineSeries = chart.addLineSeries({
           color: result.config.color,
@@ -438,7 +432,6 @@ export function MainChart({
     if (!mainSeriesRef.current) return;
     const series = mainSeriesRef.current;
 
-    // Clear old lines
     priceLinesRef.current.forEach((line) => {
       try {
         series.removePriceLine(line);
@@ -448,7 +441,6 @@ export function MainChart({
     });
     priceLinesRef.current = [];
 
-    // Position entry lines
     for (const pos of positions) {
       if (pos.status !== 'open') continue;
       const line = series.createPriceLine({
@@ -486,7 +478,6 @@ export function MainChart({
       }
     }
 
-    // Alert lines
     for (const alert of alerts) {
       if (!alert.enabled) continue;
       const line = series.createPriceLine({
@@ -531,6 +522,32 @@ export function MainChart({
       });
     });
   }, [candles, onCrosshairMove]);
+
+  // ============================================================
+  // 🔥 增量更新 candles（不重建整個圖表）- 實現即時更新
+  // ============================================================
+  useEffect(() => {
+    if (!mainSeriesRef.current || candles.length === 0) return;
+    
+    const series = mainSeriesRef.current;
+    const lastCandle = candles[candles.length - 1];
+    
+    if (!lastCandle) return;
+    
+    try {
+      // 更新最後一根 K 線
+      series.update({
+        time: lastCandle.time as UTCTimestamp,
+        open: lastCandle.open,
+        high: lastCandle.high,
+        low: lastCandle.low,
+        close: lastCandle.close,
+      } as any);
+    } catch {
+      // 如果更新失敗（可能是新 K 線），忽略錯誤
+      // 下次 chartType 變化時會重建
+    }
+  }, [candles]);
 
   // Expose zoom/reset via chart API
   useEffect(() => {
