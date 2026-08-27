@@ -9,7 +9,6 @@ import {
   type IPriceLine,
   type Time,
   type UTCTimestamp,
-  type SeriesMarker,
 } from 'lightweight-charts';
 import type {
   Candle,
@@ -38,9 +37,6 @@ interface MainChartProps {
     time: number;
   } | null) => void;
   onChartReady?: (api: IChartApi) => void;
-  onZoomIn?: () => void;
-  onZoomOut?: () => void;
-  onReset?: () => void;
 }
 
 export function MainChart({
@@ -61,7 +57,7 @@ export function MainChart({
   const volumeSeriesRef = useRef<ISeriesApi<'Histogram'> | null>(null);
   const indicatorSeriesRef = useRef<ISeriesApi<'Line' | 'Histogram'>[]>([]);
   const priceLinesRef = useRef<IPriceLine[]>([]);
-  const overlayPaneRef = useRef<number>(0);
+  const isFirstLoadRef = useRef(true);
 
   // Create chart
   useEffect(() => {
@@ -102,6 +98,7 @@ export function MainChart({
       rightPriceScale: {
         borderColor: '#222225',
         scaleMargins: { top: 0.08, bottom: 0.28 },
+        autoScale: autoScale,
       },
       timeScale: {
         borderColor: '#222225',
@@ -132,6 +129,7 @@ export function MainChart({
       mainSeriesRef.current = null;
       volumeSeriesRef.current = null;
       indicatorSeriesRef.current = [];
+      isFirstLoadRef.current = true;
     };
   }, []);
 
@@ -233,10 +231,14 @@ export function MainChart({
 
     mainSeriesRef.current = series;
 
-    // Fit content
+    // 🔥 只在首次加載時自動縮放，之後由用戶控制
+    if (isFirstLoadRef.current) {
+      chart.timeScale().fitContent();
+      isFirstLoadRef.current = false;
+    }
   }, [chartType, candles]);
 
-  // Volume series
+  // Volume series - 使用 update 而不是重建
   useEffect(() => {
     if (!chartRef.current || candles.length === 0) return;
     const chart = chartRef.current;
@@ -301,13 +303,7 @@ export function MainChart({
     for (const result of indicators) {
       if (!result.config.visible) continue;
 
-      // For separate-pane indicators (RSI, MACD, ATR, Stochastic), we'd need separate panes.
-      // Lightweight Charts v4 supports panes via a separate chart area, but we'll overlay
-      // them on the main chart with a separate price scale for simplicity, or skip them
-      // if they're in a separate pane.
       if (result.config.pane === 'separate') {
-        // For now, we'll render separate-pane indicators as overlay lines with their own scale
-        // This is a simplification — a production app would use sub-panes.
         if (result.config.type === 'volume') {
           const volSeries = chart.addHistogramSeries({
             priceFormat: { type: 'volume' },
@@ -327,7 +323,6 @@ export function MainChart({
           continue;
         }
 
-        // RSI, MACD, ATR, Stochastic — render as overlay on separate scale at bottom
         if (result.main.length > 0) {
           const lineSeries = chart.addLineSeries({
             color: result.config.color,
@@ -385,7 +380,7 @@ export function MainChart({
         continue;
       }
 
-      // Main pane indicators (SMA, EMA, Bollinger, VWAP)
+      // Main pane indicators
       if (result.main.length > 0) {
         const lineSeries = chart.addLineSeries({
           color: result.config.color,
@@ -517,7 +512,6 @@ export function MainChart({
         return;
       }
 
-      // Get the candle data at this time
       const time = param.time as number;
       const candle = candles.find((c) => c.time === time);
       if (!candle) {
@@ -538,25 +532,11 @@ export function MainChart({
     });
   }, [candles, onCrosshairMove]);
 
-  // Update last candle on price update
-  const updateLastPrice = useCallback((price: number, time: number) => {
-    if (!mainSeriesRef.current) return;
-    const series = mainSeriesRef.current;
-    try {
-      series.update({
-        time: time as UTCTimestamp,
-        close: price,
-      } as any);
-    } catch {
-      // ignore — might be out of range
-    }
-  }, []);
-
   // Expose zoom/reset via chart API
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    // Store zoom functions on the chart element for external access
+    
     (chart as any)._zoomIn = () => {
       const ts = chart.timeScale();
       const range = ts.getVisibleRange() as { from: number; to: number } | null;

@@ -28,7 +28,7 @@ const DEFAULT_SETTINGS: Settings = {
   chartType: 'candles',
   showGrid: true,
   showCrosshair: true,
-  autoScale: true,
+  autoScale: false,
   theme: 'dark',
   defaultQuantity: 1.0,
   defaultStopLoss: 5.0,
@@ -192,13 +192,6 @@ function App() {
 
   const activeAlertCount = alerts.filter((a) => a.enabled).length;
 
-  // 計算 chart key，用於強制刷新圖表
-  const chartKey = useMemo(() => {
-    if (candles.length === 0) return 'empty';
-    const lastCandle = candles[candles.length - 1];
-    return `${candles.length}-${lastCandle?.close || 0}-${lastCandle?.time || 0}`;
-  }, [candles]);
-
   // Fullscreen chart view
   if (isFullscreen) {
     return (
@@ -242,7 +235,6 @@ function App() {
           )}
           <OHLCLegend data={hoverData} timeframe={timeframe} />
           <MainChart
-            key={chartKey}
             candles={candles}
             chartType={settings.chartType}
             showGrid={settings.showGrid}
@@ -336,7 +328,6 @@ function App() {
             )}
             <OHLCLegend data={hoverData} timeframe={timeframe} />
             <MainChart
-              key={chartKey}
               candles={candles}
               chartType={settings.chartType}
               showGrid={settings.showGrid}
