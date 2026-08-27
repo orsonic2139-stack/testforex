@@ -517,7 +517,8 @@
                 updatePriceDisplay(currentPrice);
                 updateTargetDisplay();
 
-                if (targetPrice !== null) {
+                // 修復：只有在 targetPrice 不為 null 時才顯示進度
+                if (targetPrice !== null && targetPrice !== undefined) {
                     const progress = Math.min(elapsed / duration, 1);
                     updateProgress(progress);
                     progressLabel.textContent = `⏳ 進行中: ${currentPrice.toFixed(2)} → ${targetPrice.toFixed(2)}`;
@@ -537,7 +538,8 @@
 
                 updateToggleButton();
 
-                if (isRunning && !isPaused && !isComplete) {
+                // 修復：只有在 isRunning 且 targetPrice 不為 null 時才啟動動畫
+                if (isRunning && !isPaused && !isComplete && targetPrice !== null) {
                     lastTimestamp = Date.now();
                     animate();
                 }
@@ -584,6 +586,13 @@
     }
 
     function animate() {
+        // 修復：如果 targetPrice 為 null，停止動畫
+        if (targetPrice === null || targetPrice === undefined) {
+            console.warn('⚠️ targetPrice 為 null，停止動畫');
+            animationId = null;
+            return;
+        }
+
         if (!isRunning || isPaused || isComplete) {
             animationId = null;
             return;
