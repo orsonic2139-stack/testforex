@@ -47,6 +47,7 @@ export function useMarketData(timeframe: Timeframe) {
   const lastPriceRef = useRef<number | null>(null);
   const dirTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isBackendControlledRef = useRef<boolean>(false);
+  const [isBackendControlled, setIsBackendControlled] = useState(false);
 
   // ============================================================
   // 讀取 Supabase 後台價格
@@ -68,6 +69,7 @@ export function useMarketData(timeframe: Timeframe) {
         const record = data[0];
         if (record.is_running || record.is_complete) {
           isBackendControlledRef.current = true;
+          setIsBackendControlled(true);
           return {
             price: record.current_price,
             isRunning: record.is_running,
@@ -90,7 +92,7 @@ export function useMarketData(timeframe: Timeframe) {
       try {
         const { data, error } = await supabase
           .from('price_control')
-          .select('current_price, is_running, target_price')
+          .select('current_price, is_running, target_price, is_complete')
           .limit(1)
           .order('id', { ascending: true });
 
@@ -104,6 +106,11 @@ export function useMarketData(timeframe: Timeframe) {
           if (record.current_price) {
             console.log('📊 從 Supabase 載入初始價格:', record.current_price);
             lastPriceRef.current = record.current_price;
+            
+            if (record.is_running || record.is_complete) {
+              isBackendControlledRef.current = true;
+              setIsBackendControlled(true);
+            }
             
             setQuote((prev) => {
               if (!prev) {
@@ -178,6 +185,7 @@ export function useMarketData(timeframe: Timeframe) {
           const price = backendData.price;
           lastPriceRef.current = price;
           isBackendControlledRef.current = true;
+          setIsBackendControlled(true);
           
           setQuote({
             bid: round2(price - 0.18),
@@ -248,7 +256,15 @@ export function useMarketData(timeframe: Timeframe) {
             }
             
             lastPriceRef.current = newPrice;
-            isBackendControlledRef.current = true;
+            
+            // 檢查是否為後台控制
+            if (record.is_running || record.is_complete) {
+              isBackendControlledRef.current = true;
+              setIsBackendControlled(true);
+            } else {
+              isBackendControlledRef.current = false;
+              setIsBackendControlled(false);
+            }
 
             // 🔥 更新最後一根 K 線（讓圖表即時反應）
             setCandles((prevCandles) => {
@@ -258,15 +274,12 @@ export function useMarketData(timeframe: Timeframe) {
               const lastCandle = updatedCandles[updatedCandles.length - 1];
               
               if (lastCandle) {
-                // 檢查是否需要創建新 K 線（超過 1 分鐘）
                 const now = Math.floor(Date.now() / 1000);
                 const candleAge = now - lastCandle.time;
                 
-                // 如果 K 線超過 1 分鐘，創建新 K 線
                 if (candleAge > 60) {
-                  // 創建新 K 線
                   updatedCandles.push({
-                    time: Math.floor(now / 60) * 60, // 對齊到分鐘
+                    time: Math.floor(now / 60) * 60,
                     open: newPrice,
                     high: newPrice,
                     low: newPrice,
@@ -274,7 +287,6 @@ export function useMarketData(timeframe: Timeframe) {
                     volume: 0,
                   });
                 } else {
-                  // 更新最後一根 K 線
                   updatedCandles[updatedCandles.length - 1] = {
                     ...lastCandle,
                     close: newPrice,
@@ -320,8 +332,11 @@ export function useMarketData(timeframe: Timeframe) {
               };
             });
 
+            // 如果後台控制完成，恢復隨機浮動
             if (record.is_complete) {
-              console.log('✅ 後台價格目標已達成:', newPrice);
+              console.log('✅ 後台目標達成，恢復隨機浮動');
+              isBackendControlledRef.current = false;
+              setIsBackendControlled(false);
             }
           }
         }
@@ -367,6 +382,35 @@ export function useMarketData(timeframe: Timeframe) {
       }
       
       lastPriceRef.current = update.last;
+
+      // 更新 K 線
+      setCandles((prevCandles) => {
+        if (prevCandles.length === 0) return prevCandles;
+        const updatedCandles = [...prevCandles];
+        const lastCandle = updatedCandles[updatedCandles.length - 1];
+        if (lastCandle) {
+          const now = Math.floor(Date.now() / 1000);
+          const candleAge = now - lastCandle.time;
+          if (candleAge > 60) {
+            updatedCandles.push({
+              time: Math.floor(now / 60) * 60,
+              open: update.last,
+              high: update.last,
+              low: update.last,
+              close: update.last,
+              volume: 0,
+            });
+          } else {
+            updatedCandles[updatedCandles.length - 1] = {
+              ...lastCandle,
+              close: update.last,
+              high: Math.max(lastCandle.high, update.last),
+              low: Math.min(lastCandle.low, update.last),
+            };
+          }
+        }
+        return updatedCandles;
+      });
 
       setQuote((prevQuote) => {
         if (!prevQuote) {
@@ -442,6 +486,7 @@ export function useMarketData(timeframe: Timeframe) {
   // ============================================================
   const enableBackendControl = useCallback(() => {
     isBackendControlledRef.current = true;
+    setIsBackendControlled(true);
   }, []);
 
   // ============================================================
@@ -449,6 +494,7 @@ export function useMarketData(timeframe: Timeframe) {
   // ============================================================
   const disableBackendControl = useCallback(() => {
     isBackendControlledRef.current = false;
+    setIsBackendControlled(false);
   }, []);
 
   return {
@@ -462,7 +508,7 @@ export function useMarketData(timeframe: Timeframe) {
     priceDirection,
     refresh,
     provider: providerRef.current,
-    isBackendControlled: isBackendControlledRef.current,
+    isBackendControlled: isBackendControlled,
     enableBackendControl,
     disableBackendControl,
     loadBackendPrice,

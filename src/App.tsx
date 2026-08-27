@@ -67,7 +67,6 @@ function App() {
   } | null>(null);
   const [chartApi, setChartApi] = useState<IChartApi | null>(null);
   const [indicators, setIndicators] = useState<IndicatorConfig[]>([]);
-  // 後台控制面板展開狀態
   const [showBackendControl, setShowBackendControl] = useState(true);
 
   const {
@@ -193,6 +192,13 @@ function App() {
 
   const activeAlertCount = alerts.filter((a) => a.enabled).length;
 
+  // 計算 chart key，用於強制刷新圖表
+  const chartKey = useMemo(() => {
+    if (candles.length === 0) return 'empty';
+    const lastCandle = candles[candles.length - 1];
+    return `${candles.length}-${lastCandle?.close || 0}-${lastCandle?.time || 0}`;
+  }, [candles]);
+
   // Fullscreen chart view
   if (isFullscreen) {
     return (
@@ -236,6 +242,7 @@ function App() {
           )}
           <OHLCLegend data={hoverData} timeframe={timeframe} />
           <MainChart
+            key={chartKey}
             candles={candles}
             chartType={settings.chartType}
             showGrid={settings.showGrid}
@@ -329,6 +336,7 @@ function App() {
             )}
             <OHLCLegend data={hoverData} timeframe={timeframe} />
             <MainChart
+              key={chartKey}
               candles={candles}
               chartType={settings.chartType}
               showGrid={settings.showGrid}
@@ -360,10 +368,9 @@ function App() {
             <div className="p-2.5 space-y-2.5">
               <MarketInfoPanel quote={quote} candles={candles} />
               
-              {/* 後台控制面板 - 只在開發環境顯示，可通過環境變數控制 */}
+              {/* 後台控制面板 */}
               {(import.meta.env.DEV || import.meta.env.VITE_SHOW_BACKEND === 'true') && (
                 <div className="relative">
-                  {/* 摺疊按鈕 */}
                   <button
                     onClick={() => setShowBackendControl(!showBackendControl)}
                     className="w-full flex items-center justify-between px-2 py-1 text-xs text-txt-muted hover:text-txt-secondary hover:bg-bg-hover rounded transition-colors"

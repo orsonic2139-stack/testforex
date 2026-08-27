@@ -12,6 +12,7 @@ export class PriceSimulator extends EventEmitter {
     this.isRunning = false;
     this.updateInterval = null;
     this.lastUpdateTime = null;
+    this.randomWalkInterval = null;
   }
 
   // 獲取當前價格
@@ -45,8 +46,9 @@ export class PriceSimulator extends EventEmitter {
       throw new Error('持續時間至少為 1 秒');
     }
 
-    // 停止當前的模擬
+    // 停止當前的模擬和隨機浮動
     this.stop();
+    this.stopRandomWalk();
 
     // 設定新目標
     this.targetPrice = targetPrice;
@@ -76,10 +78,9 @@ export class PriceSimulator extends EventEmitter {
 
     this.lastUpdateTime = Date.now();
 
-    // 使用 requestAnimationFrame 風格的 setInterval
     this.updateInterval = setInterval(() => {
       this.update();
-    }, 50); // 每 50ms 更新一次，實現平滑動畫
+    }, 50);
   }
 
   // 更新價格
@@ -90,25 +91,18 @@ export class PriceSimulator extends EventEmitter {
     }
 
     const now = Date.now();
-    const deltaTime = (now - this.lastUpdateTime) / 1000; // 秒
+    const deltaTime = (now - this.lastUpdateTime) / 1000;
     this.lastUpdateTime = now;
 
     this.elapsed += deltaTime;
 
-    // 計算進度 (0 到 1)
     let progress = Math.min(this.elapsed / this.duration, 1);
-
-    // 使用 easeInOut 緩動函數，讓價格變化更自然
     const easedProgress = this.easeInOut(progress);
 
-    // 計算當前價格（線性插值）
     const priceRange = this.targetPrice - this.initialPrice;
     this.currentPrice = this.initialPrice + priceRange * easedProgress;
-
-    // 四捨五入到小數點後 2 位
     this.currentPrice = Math.round(this.currentPrice * 100) / 100;
 
-    // 發送更新事件
     this.emit('update', {
       price: this.currentPrice,
       targetPrice: this.targetPrice,
@@ -116,9 +110,9 @@ export class PriceSimulator extends EventEmitter {
       elapsed: this.elapsed,
       duration: this.duration,
       isComplete: progress >= 1,
+      isRandomWalk: false,
     });
 
-    // 檢查是否達到目標
     if (progress >= 1) {
       this.currentPrice = this.targetPrice;
       this.stop();
@@ -129,6 +123,9 @@ export class PriceSimulator extends EventEmitter {
         duration: this.duration,
         message: `✅ 已達到目標價格 ${this.targetPrice.toFixed(2)}`,
       });
+
+      // 到達目標後，恢復隨機浮動
+      this.startRandomWalk();
     }
   }
 
@@ -148,6 +145,40 @@ export class PriceSimulator extends EventEmitter {
     }
   }
 
+  // 開始隨機浮動（到達目標後自動恢復）
+  startRandomWalk() {
+    if (this.randomWalkInterval) {
+      clearInterval(this.randomWalkInterval);
+    }
+    
+    this.randomWalkInterval = setInterval(() => {
+      if (this.isPaused) return;
+      if (this.isRunning) return;
+      
+      const shock = (Math.random() - 0.5) * 0.4;
+      this.currentPrice = Math.max(50, this.currentPrice + shock);
+      this.currentPrice = Math.round(this.currentPrice * 100) / 100;
+      
+      this.emit('update', {
+        price: this.currentPrice,
+        targetPrice: null,
+        progress: 0,
+        elapsed: 0,
+        duration: 0,
+        isComplete: false,
+        isRandomWalk: true,
+      });
+    }, 1500);
+  }
+
+  // 停止隨機浮動
+  stopRandomWalk() {
+    if (this.randomWalkInterval) {
+      clearInterval(this.randomWalkInterval);
+      this.randomWalkInterval = null;
+    }
+  }
+
   // 暫停/繼續
   togglePause() {
     this.isPaused = !this.isPaused;
@@ -160,6 +191,7 @@ export class PriceSimulator extends EventEmitter {
   // 重置
   reset() {
     this.stop();
+    this.stopRandomWalk();
     this.currentPrice = this.initialPrice;
     this.targetPrice = null;
     this.duration = 0;
@@ -174,7 +206,11 @@ export class PriceSimulator extends EventEmitter {
       elapsed: 0,
       duration: 0,
       isComplete: true,
+      isRandomWalk: false,
     });
+
+    // 重置後恢復隨機浮動
+    this.startRandomWalk();
 
     return this.currentPrice;
   }
@@ -182,6 +218,7 @@ export class PriceSimulator extends EventEmitter {
   // 清理資源
   destroy() {
     this.stop();
+    this.stopRandomWalk();
     this.removeAllListeners();
   }
 }

@@ -237,6 +237,10 @@
             border-radius: 8px;
             margin-top: 12px;
             border: 1px solid #1a1a1d;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .status-msg.success { color: #22c55e; border-color: rgba(34, 197, 94, 0.2); }
         .status-msg.error { color: #ef4444; border-color: rgba(239, 68, 68, 0.2); }
@@ -295,7 +299,7 @@
 
     <div class="progress-section">
         <div class="progress-label">
-            <span id="progressLabel">等待設定目標...</span>
+            <span id="progressLabel">📊 市場價格浮動中...</span>
             <span id="progressPercent">0%</span>
         </div>
         <div class="progress-bar"><div class="fill" id="progressFill"></div></div>
@@ -341,7 +345,7 @@
 
     <hr class="divider" />
 
-    <div class="status-msg" id="statusMsg">✅ 就緒 - 等待設定價格目標</div>
+    <div class="status-msg" id="statusMsg">📊 市場價格浮動中...</div>
     <div class="db-status" id="dbStatus">📡 Supabase: 檢查中...</div>
 </div>
 
@@ -397,6 +401,7 @@
     let lastTimestamp = null;
     let lastPrice = 2485.00;
     let rowId = null;
+    let randomWalkInterval = null;
 
     // ============================================================
     // UI 更新函數
@@ -425,12 +430,48 @@
     }
 
     function updateToggleButton() {
-        if (isPaused) {
-            btnToggle.textContent = '▶️';
-        } else {
-            btnToggle.textContent = '⏸️';
-        }
+        btnToggle.textContent = isPaused ? '▶️' : '⏸️';
         btnToggle.disabled = !isRunning || isComplete;
+    }
+
+    // ============================================================
+    // 隨機浮動（背景價格變動）
+    // ============================================================
+    function startRandomWalk() {
+        if (randomWalkInterval) {
+            clearInterval(randomWalkInterval);
+        }
+        
+        console.log('📊 啟動隨機浮動...');
+        
+        randomWalkInterval = setInterval(async () => {
+            // 如果正在執行目標模擬，跳過
+            if (isRunning) return;
+            if (isPaused) return;
+            
+            const shock = (Math.random() - 0.5) * 0.4;
+            currentPrice = Math.max(50, currentPrice + shock);
+            currentPrice = Math.round(currentPrice * 100) / 100;
+            
+            let direction = null;
+            if (currentPrice > lastPrice) direction = 'up';
+            else if (currentPrice < lastPrice) direction = 'down';
+            lastPrice = currentPrice;
+            
+            updatePriceDisplay(currentPrice, direction);
+            progressLabel.textContent = `📊 隨機浮動: ${currentPrice.toFixed(2)}`;
+            setStatus('📊 市場價格浮動中...', 'info');
+            
+            await saveToSupabase();
+        }, 1500);
+    }
+
+    function stopRandomWalk() {
+        if (randomWalkInterval) {
+            clearInterval(randomWalkInterval);
+            randomWalkInterval = null;
+            console.log('⏹️ 停止隨機浮動');
+        }
     }
 
     // ============================================================
@@ -454,8 +495,6 @@
             updated_at: new Date().toISOString()
         };
 
-        console.log('📤 正在寫入 Supabase:', data);
-
         try {
             const { error } = await supabase
                 .from('price_control')
@@ -464,17 +503,14 @@
 
             if (error) {
                 console.error('❌ 儲存失敗:', error);
-                setStatus('❌ 儲存失敗: ' + error.message, 'error');
                 dbStatus.textContent = '📡 Supabase: ❌ 寫入失敗';
                 dbStatus.style.color = '#ef4444';
             } else {
-                console.log('✅ 儲存成功!');
                 dbStatus.textContent = '📡 Supabase: ✅ 已同步';
                 dbStatus.style.color = '#22c55e';
             }
         } catch (err) {
             console.error('❌ 儲存異常:', err);
-            setStatus('❌ 儲存異常: ' + err.message, 'error');
         }
     }
 
@@ -517,7 +553,6 @@
                 updatePriceDisplay(currentPrice);
                 updateTargetDisplay();
 
-                // 修復：只有在 targetPrice 不為 null 時才顯示進度
                 if (targetPrice !== null && targetPrice !== undefined) {
                     const progress = Math.min(elapsed / duration, 1);
                     updateProgress(progress);
@@ -526,19 +561,22 @@
                     if (isComplete) {
                         setStatus(`✅ 已達到目標價格 ${targetPrice.toFixed(2)}`, 'success');
                         progressLabel.textContent = `✅ 已完成: ${targetPrice.toFixed(2)}`;
+                        // 完成後恢復隨機浮動
+                        startRandomWalk();
                     } else if (isPaused) {
                         setStatus('⏸️ 已暫停', 'info');
                     } else if (isRunning) {
                         setStatus(`⏳ 正在模擬: ${(progress * 100).toFixed(1)}%`, 'info');
                     }
                 } else {
-                    progressLabel.textContent = '等待設定目標...';
+                    progressLabel.textContent = '📊 等待設定目標...';
                     updateProgress(0);
+                    // 沒有目標時，啟動隨機浮動
+                    startRandomWalk();
                 }
 
                 updateToggleButton();
 
-                // 修復：只有在 isRunning 且 targetPrice 不為 null 時才啟動動畫
                 if (isRunning && !isPaused && !isComplete && targetPrice !== null) {
                     lastTimestamp = Date.now();
                     animate();
@@ -567,6 +605,7 @@
                     console.log('✅ 已創建記錄, ID:', rowId);
                     dbStatus.textContent = '📡 Supabase: ✅ 已創建';
                     dbStatus.style.color = '#22c55e';
+                    startRandomWalk();
                     return true;
                 }
             }
@@ -579,16 +618,14 @@
     }
 
     // ============================================================
-    // 動畫函數
+    // 動畫函數 (easeInOut)
     // ============================================================
     function easeInOut(t) {
         return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
     }
 
     function animate() {
-        // 修復：如果 targetPrice 為 null，停止動畫
         if (targetPrice === null || targetPrice === undefined) {
-            console.warn('⚠️ targetPrice 為 null，停止動畫');
             animationId = null;
             return;
         }
@@ -627,19 +664,23 @@
         progressLabel.textContent = `⏳ 進行中: ${currentPrice.toFixed(2)} → ${targetPrice.toFixed(2)}`;
         setStatus(`⏳ 正在模擬: ${(progress * 100).toFixed(1)}%`, 'info');
 
-        // 每幀都儲存
         saveToSupabase();
 
         if (progress >= 1) {
             currentPrice = targetPrice;
             isComplete = true;
             isRunning = false;
+            
             updatePriceDisplay(currentPrice);
             updateProgress(1);
             progressLabel.textContent = `✅ 已完成: ${targetPrice.toFixed(2)}`;
             setStatus(`✅ 已達到目標價格 ${targetPrice.toFixed(2)}`, 'success');
-            saveToSupabase();
             updateToggleButton();
+            
+            saveToSupabase();
+            
+            // 🔥 到達目標後，恢復隨機浮動
+            startRandomWalk();
 
             priceDisplay.classList.add('celebrate');
             setTimeout(() => priceDisplay.classList.remove('celebrate'), 1500);
@@ -662,15 +703,20 @@
             animationId = null;
         }
 
+        // 🔥 設定目標時，停止隨機浮動
+        stopRandomWalk();
+
         const target = parseFloat(price);
         if (isNaN(target) || target <= 0) {
             setStatus('❌ 請輸入有效的目標價格（大於 0）', 'error');
+            startRandomWalk();
             return false;
         }
 
         const durSeconds = parseInt(dur) || 30;
         if (durSeconds < 1) {
             setStatus('❌ 持續時間至少 1 秒', 'error');
+            startRandomWalk();
             return false;
         }
 
@@ -685,20 +731,15 @@
         progressLabel.textContent = `🎯 目標設定: ${currentPrice.toFixed(2)} → ${target.toFixed(2)} (${durSeconds}s)`;
         setStatus(`🎯 目標已設定: ${durSeconds} 秒內從 ${currentPrice.toFixed(2)} 達到 ${target.toFixed(2)}`, 'info');
 
-        // 先儲存初始狀態
         await saveToSupabase();
 
-        // 開始模擬
         isRunning = true;
         isPaused = false;
         lastTimestamp = Date.now();
         lastPrice = currentPrice;
         updateToggleButton();
 
-        // 立即儲存一次
         await saveToSupabase();
-
-        // 開始動畫
         animate();
 
         targetInput.value = '';
@@ -711,6 +752,8 @@
             animationId = null;
         }
 
+        stopRandomWalk();
+
         currentPrice = initialPrice;
         targetPrice = null;
         elapsed = 0;
@@ -722,10 +765,14 @@
         updatePriceDisplay(currentPrice);
         updateTargetDisplay();
         updateProgress(0);
-        progressLabel.textContent = '等待設定目標...';
+        progressLabel.textContent = '🔄 已重置，恢復隨機浮動';
         setStatus('🔄 已重置', 'info');
         updateToggleButton();
+        
         await saveToSupabase();
+        
+        // 重置後恢復隨機浮動
+        startRandomWalk();
     }
 
     function togglePause() {
@@ -786,7 +833,9 @@
 
     init();
 
+    // ============================================================
     // 暴露到全局方便調試
+    // ============================================================
     window.AURUM = {
         supabase,
         currentPrice: () => currentPrice,
@@ -797,9 +846,16 @@
         toggle: togglePause,
         saveToSupabase,
         loadFromSupabase,
+        startRandomWalk,
+        stopRandomWalk,
+        isRunning: () => isRunning,
+        isPaused: () => isPaused,
+        isComplete: () => isComplete,
     };
 
     console.log('💡 調試: 在控制台輸入 AURUM 查看可用函數');
+    console.log('📊 當前價格:', currentPrice);
+    console.log('🎯 目標價格:', targetPrice);
 </script>
 </body>
 </html>
