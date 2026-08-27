@@ -232,74 +232,95 @@ export function useMarketData(timeframe: Timeframe) {
     let randomWalkInterval: ReturnType<typeof setInterval> | null = null;
 
     // 啟動隨機浮動（只在沒有後台控制時）
-    const startRandomWalk = () => {
-      if (randomWalkInterval) {
-        clearInterval(randomWalkInterval);
+const startRandomWalk = () => {
+  if (randomWalkInterval) {
+    clearInterval(randomWalkInterval);
+  }
+  
+  randomWalkInterval = setInterval(async () => {
+    try {
+      // 檢查 Supabase 中是否有正在運行的後台控制
+      const { data } = await supabase
+        .from('price_control')
+        .select('is_running, is_complete')
+        .limit(1)
+        .order('id', { ascending: true });
+      
+      if (data && data.length > 0) {
+        const record = data[0];
+        
+        // ✅ 只有當 is_running 為 true 時才跳過浮動
+        if (record.is_running === true) {
+          return;  // 後台控制進行中，跳過
+        }
+        
+        // ✅ 如果 is_complete 為 true，自動重置標誌
+        if (record.is_complete === true) {
+          console.log('✅ 後台控制已完成，自動重置標誌');
+          await supabase
+            .from('price_control')
+            .update({
+              is_complete: false,
+              is_running: false,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', 1);
+          // 更新本地狀態
+          isBackendControlledRef.current = false;
+          setIsBackendControlled(false);
+        }
       }
       
-      randomWalkInterval = setInterval(async () => {
-        // 檢查 Supabase 中是否有正在運行的後台控制
-        const { data } = await supabase
-          .from('price_control')
-          .select('is_running, is_complete')
-          .limit(1)
-          .order('id', { ascending: true });
+      // 隨機浮動 (±0.3)
+      const currentPrice = lastPriceRef.current || 2485;
+      const shock = (Math.random() - 0.5) * 0.6;
+      const newPrice = Math.max(50, currentPrice + shock);
+      const roundedPrice = Math.round(newPrice * 100) / 100;
+      
+      // 更新 Supabase
+      const { error } = await supabase
+        .from('price_control')
+        .update({
+          current_price: roundedPrice,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', 1);
+      
+      if (!error) {
+        lastPriceRef.current = roundedPrice;
         
-        if (data && data.length > 0) {
-          const record = data[0];
-          // 如果有後台控制正在運行，跳過浮動
-          if (record.is_running || record.is_complete) {
-            return;
-          }
-        }
+        // 更新本地狀態
+        setQuote((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            last: roundedPrice,
+            bid: round2(roundedPrice - 0.18),
+            ask: round2(roundedPrice + 0.18),
+          };
+        });
         
-        // 隨機浮動 (±0.3)
-        const currentPrice = lastPriceRef.current || 2485;
-        const shock = (Math.random() - 0.5) * 0.6;
-        const newPrice = Math.max(50, currentPrice + shock);
-        const roundedPrice = Math.round(newPrice * 100) / 100;
-        
-        // 更新 Supabase
-        const { error } = await supabase
-          .from('price_control')
-          .update({
-            current_price: roundedPrice,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', 1);
-        
-        if (!error) {
-          lastPriceRef.current = roundedPrice;
-          
-          // 更新本地狀態
-          setQuote((prev) => {
-            if (!prev) return prev;
-            return {
-              ...prev,
-              last: roundedPrice,
-              bid: round2(roundedPrice - 0.18),
-              ask: round2(roundedPrice + 0.18),
+        // 更新 candles
+        setCandles((prev) => {
+          if (prev.length === 0) return prev;
+          const updated = [...prev];
+          const last = updated[updated.length - 1];
+          if (last) {
+            updated[updated.length - 1] = {
+              ...last,
+              close: roundedPrice,
+              high: Math.max(last.high, roundedPrice),
+              low: Math.min(last.low, roundedPrice),
             };
-          });
-          
-          // 更新 candles
-          setCandles((prev) => {
-            if (prev.length === 0) return prev;
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
-            if (last) {
-              updated[updated.length - 1] = {
-                ...last,
-                close: roundedPrice,
-                high: Math.max(last.high, roundedPrice),
-                low: Math.min(last.low, roundedPrice),
-              };
-            }
-            return updated;
-          });
-        }
-      }, 1500);
-    };
+          }
+          return updated;
+        });
+      }
+    } catch (err) {
+      console.warn('隨機浮動錯誤:', err);
+    }
+  }, 1500);
+};
 
     // Supabase Realtime 訂閱
     const channel = supabase
