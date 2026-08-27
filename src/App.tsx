@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { Info, ChevronRight, ChevronLeft, X } from 'lucide-react';
+import { Info, ChevronRight, ChevronLeft } from 'lucide-react';
 import { Header } from '@/components/header/Header';
 import { ChartToolbar, type DrawingTool } from '@/components/chart/ChartToolbar';
 import { TimeframeSelector, type TimeframeId } from '@/components/chart/TimeframeSelector';
@@ -11,6 +11,7 @@ import { OrderPanel } from '@/components/order-panel/OrderPanel';
 import { PositionsPanel } from '@/components/positions/PositionsPanel';
 import { AlertsPanel } from '@/components/alerts/AlertsPanel';
 import { SettingsModal } from '@/components/SettingsModal';
+import { BackendControlPanel } from '@/components/backend/BackendControlPanel';
 import { useMarketData } from '@/hooks/useMarketData';
 import { useTradingStore } from '@/hooks/useTradingStore';
 import { computeIndicator, INDICATOR_DEFAULTS } from '@/services/indicators';
@@ -66,6 +67,8 @@ function App() {
   } | null>(null);
   const [chartApi, setChartApi] = useState<IChartApi | null>(null);
   const [indicators, setIndicators] = useState<IndicatorConfig[]>([]);
+  // 後台控制面板展開狀態
+  const [showBackendControl, setShowBackendControl] = useState(true);
 
   const {
     quote,
@@ -353,9 +356,32 @@ function App() {
 
         {/* Right sidebar */}
         {showSidebar && (
-          <div className="w-72 lg:w-80 flex-shrink-0 border-l border-border bg-bg-panel overflow-y-auto hidden md:block">
+          <div className="w-80 lg:w-96 flex-shrink-0 border-l border-border bg-bg-panel overflow-y-auto hidden md:block">
             <div className="p-2.5 space-y-2.5">
               <MarketInfoPanel quote={quote} candles={candles} />
+              
+              {/* 後台控制面板 - 只在開發環境顯示，可通過環境變數控制 */}
+              {(import.meta.env.DEV || import.meta.env.VITE_SHOW_BACKEND === 'true') && (
+                <div className="relative">
+                  {/* 摺疊按鈕 */}
+                  <button
+                    onClick={() => setShowBackendControl(!showBackendControl)}
+                    className="w-full flex items-center justify-between px-2 py-1 text-xs text-txt-muted hover:text-txt-secondary hover:bg-bg-hover rounded transition-colors"
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
+                      🎮 後台控制
+                    </span>
+                    <span>{showBackendControl ? '▼' : '▶'}</span>
+                  </button>
+                  {showBackendControl && (
+                    <div className="mt-1.5">
+                      <BackendControlPanel />
+                    </div>
+                  )}
+                </div>
+              )}
+              
               <OrderPanel
                 quote={quote}
                 defaultQuantity={settings.defaultQuantity}

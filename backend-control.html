@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AURUM 後台控制面板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            background: #0a0a0b;
+            color: #e4e4e7;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: #111113;
+            border: 1px solid #222225;
+            border-radius: 16px;
+            padding: 32px;
+            max-width: 480px;
+            width: 100%;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.8);
+        }
+
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px solid #1a1a1d;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo svg {
+            width: 32px;
+            height: 32px;
+        }
+
+        .logo h1 {
+            font-size: 18px;
+            font-weight: 700;
+            color: #e4e4e7;
+        }
+
+        .logo span {
+            font-size: 10px;
+            color: #d4af37;
+            letter-spacing: 3px;
+            font-weight: 600;
+            display: block;
+            margin-top: -2px;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            background: #161618;
+            border: 1px solid #222225;
+            border-radius: 20px;
+            font-size: 10px;
+            font-weight: 600;
+            color: #22c55e;
+        }
+
+        .status-badge .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #22c55e;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* 價格顯示 */
+        .price-display {
+            background: #0d0d0f;
+            border: 1px solid #1a1a1d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 24px;
+            text-align: center;
+        }
+
+        .price-display .label {
+            font-size: 11px;
+            color: #71717a;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        .price-display .price {
+            font-size: 42px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+            color: #d4af37;
+            margin: 4px 0 2px;
+            transition: color 0.3s;
+        }
+
+        .price-display .price.bull {
+            color: #22c55e;
+        }
+        .price-display .price.bear {
+            color: #ef4444;
+        }
+
+        .price-display .sub-info {
+            display: flex;
+            justify-content: center;
+            gap: 24px;
+            font-size: 12px;
+            color: #71717a;
+            margin-top: 6px;
+        }
+
+        .price-display .sub-info span {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .price-display .sub-info .highlight {
+            color: #d4af37;
+        }
+
+        /* 進度條 */
+        .progress-section {
+            margin-bottom: 20px;
+        }
+
+        .progress-section .progress-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 11px;
+            color: #71717a;
+            margin-bottom: 4px;
+        }
+
+        .progress-section .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: #1a1a1d;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-section .progress-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #d4af37, #e8c547);
+            border-radius: 4px;
+            width: 0%;
+            transition: width 0.15s ease;
+        }
+
+        /* 控制區域 */
+        .control-group {
+            margin-bottom: 16px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 11px;
+            color: #71717a;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .control-group input,
+        .control-group select {
+            width: 100%;
+            padding: 10px 14px;
+            background: #0d0d0f;
+            border: 1px solid #222225;
+            border-radius: 8px;
+            color: #e4e4e7;
+            font-size: 14px;
+            font-family: 'JetBrains Mono', monospace;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .control-group input:focus,
+        .control-group select:focus {
+            border-color: #d4af37;
+        }
+
+        .control-group input::placeholder {
+            color: #52525b;
+        }
+
+        .control-group select option {
+            background: #0d0d0f;
+        }
+
+        /* 按鈕 */
+        .btn-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 12px 16px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: rgba(212, 175, 55, 0.15);
+            color: #d4af37;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+        }
+
+        .btn-primary:hover {
+            background: rgba(212, 175, 55, 0.25);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: #161618;
+            color: #a1a1aa;
+            border: 1px solid #222225;
+        }
+
+        .btn-secondary:hover {
+            background: #1d1d20;
+        }
+
+        .btn-danger {
+            background: rgba(239, 68, 68, 0.15);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .btn-danger:hover {
+            background: rgba(239, 68, 68, 0.25);
+        }
+
+        .btn-success {
+            background: rgba(34, 197, 94, 0.15);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.3);
+        }
+
+        .btn-success:hover {
+            background: rgba(34, 197, 94, 0.25);
+        }
+
+        .btn-icon {
+            flex: 0 0 auto;
+            padding: 12px 14px;
+        }
+
+        /* 快速設定 */
+        .quick-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }
+
+        .quick-buttons .qb {
+            padding: 4px 12px;
+            background: #161618;
+            border: 1px solid #222225;
+            border-radius: 4px;
+            color: #a1a1aa;
+            font-size: 10px;
+            font-family: 'JetBrains Mono', monospace;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .quick-buttons .qb:hover {
+            background: #1d1d20;
+            border-color: #d4af37;
+            color: #e4e4e7;
+        }
+
+        /* 狀態消息 */
+        .status-msg {
+            text-align: center;
+            font-size: 12px;
+            color: #71717a;
+            padding: 10px;
+            background: #0d0d0f;
+            border-radius: 8px;
+            margin-top: 12px;
+            border: 1px solid #1a1a1d;
+        }
+
+        .status-msg.success {
+            color: #22c55e;
+            border-color: rgba(34, 197, 94, 0.2);
+        }
+
+        .status-msg.error {
+            color: #ef4444;
+            border-color: rgba(239, 68, 68, 0.2);
+        }
+
+        .status-msg.info {
+            color: #d4af37;
+            border-color: rgba(212, 175, 55, 0.2);
+        }
+
+        /* 目標達成動畫 */
+        @keyframes celebrate {
+            0%,
+            100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.02);
+            }
+        }
+
+        .celebrate {
+            animation: celebrate 0.5s ease 3;
+            border-color: #d4af37 !important;
+        }
+
+        /* 分隔線 */
+        .divider {
+            border: none;
+            border-top: 1px solid #1a1a1d;
+            margin: 16px 0;
+        }
+
+        /* 響應式 */
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+            }
+            .price-display .price {
+                font-size: 32px;
+            }
+            .btn-group {
+                flex-wrap: wrap;
+            }
+            .btn {
+                flex: 1 1 100%;
+            }
+        }
+
+        /* 狀態指示燈 */
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #0d0d0f;
+            border-radius: 6px;
+            font-size: 11px;
+            color: #71717a;
+        }
+
+        .status-indicator .led {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-indicator .led.green {
+            background: #22c55e;
+            animation: pulse 1.8s ease-in-out infinite;
+        }
+        .status-indicator .led.yellow {
+            background: #f59e0b;
+        }
+        .status-indicator .led.red {
+            background: #ef4444;
+        }
+        .status-indicator .led.off {
+            background: #52525b;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <svg viewBox="0 0 32 32">
+                    <path d="M16 5 L24 11 V21 L16 27 L8 21 V11 Z" fill="none" stroke="#d4af37" stroke-width="1.8" stroke-linejoin="round"/>
+                    <path d="M16 10 L20 13 V18 L16 21 L12 18 V13 Z" fill="#d4af37" opacity="0.85"/>
+                </svg>
+                <div>
+                    <h1>AURUM</h1>
+                    <span>後台控制</span>
+                </div>
+            </div>
+            <div class="status-badge">
+                <span class="dot"></span>
+                已連接
+            </div>
+        </div>
+
+        <!-- 價格顯示 -->
+        <div class="price-display" id="priceDisplay">
+            <div class="label">當前價格 (XAU/USD)</div>
+            <div class="price" id="currentPrice">2485.00</div>
+            <div class="sub-info">
+                <span>目標: <span class="highlight" id="targetDisplay">—</span></span>
+                <span>進度: <span id="progressDisplay">0%</span></span>
+            </div>
+        </div>
+
+        <!-- 進度條 -->
+        <div class="progress-section">
+            <div class="progress-label">
+                <span id="progressLabel">等待設定目標...</span>
+                <span id="progressPercent">0%</span>
+            </div>
+            <div class="progress-bar">
+                <div class="fill" id="progressFill"></div>
+            </div>
+        </div>
+
+        <hr class="divider" />
+
+        <!-- 控制區域 -->
+        <div class="control-group">
+            <label>🎯 目標價格</label>
+            <input type="number" id="targetPrice" step="0.01" placeholder="例如: 2500.00" />
+        </div>
+
+        <div class="control-group">
+            <label>⏱️ 持續時間</label>
+            <select id="duration">
+                <option value="5">5 秒</option>
+                <option value="10">10 秒</option>
+                <option value="15">15 秒</option>
+                <option value="30" selected>30 秒</option>
+                <option value="45">45 秒</option>
+                <option value="60">60 秒</option>
+                <option value="120">2 分鐘</option>
+                <option value="300">5 分鐘</option>
+            </select>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn btn-primary" id="btnSet">
+                ⚡ 設定目標
+            </button>
+            <button class="btn btn-secondary btn-icon" id="btnToggle" title="暫停/繼續">
+                ⏸️
+            </button>
+            <button class="btn btn-secondary btn-icon" id="btnReset" title="重置">
+                ↺
+            </button>
+        </div>
+
+        <!-- 快速設定 -->
+        <div style="margin-top: 12px;">
+            <div style="font-size: 10px; color: #52525b; margin-bottom: 4px;">快速設定</div>
+            <div class="quick-buttons">
+                <button class="qb" data-price="2500" data-duration="30">+15 (30s)</button>
+                <button class="qb" data-price="2480" data-duration="20">-5 (20s)</button>
+                <button class="qb" data-price="2600" data-duration="120">+115 (2m)</button>
+                <button class="qb" data-price="2400" data-duration="90">-85 (1.5m)</button>
+                <button class="qb" data-price="2525" data-duration="45">+40 (45s)</button>
+                <button class="qb" data-price="2450" data-duration="60">-35 (60s)</button>
+            </div>
+        </div>
+
+        <hr class="divider" />
+
+        <!-- 狀態訊息 -->
+        <div class="status-msg" id="statusMsg">✅ 就緒 - 等待設定價格目標</div>
+
+        <!-- 連接狀態 -->
+        <div style="display: flex; justify-content: space-between; margin-top: 12px; font-size: 10px; color: #52525b;">
+            <span>🔄 實時同步</span>
+            <span id="lastUpdate">最後更新: —</span>
+        </div>
+    </div>
+
+    <script>
+        // ============================================================
+        // 純前端後台控制 - 使用 localStorage 與前端通信
+        // 雙擊此 HTML 文件即可打開使用
+        // ============================================================
+
+        (function() {
+            'use strict';
+
+            // ----- DOM 元素 -----
+            const priceEl = document.getElementById('currentPrice');
+            const targetDisplay = document.getElementById('targetDisplay');
+            const progressDisplay = document.getElementById('progressDisplay');
+            const progressFill = document.getElementById('progressFill');
+            const progressLabel = document.getElementById('progressLabel');
+            const progressPercent = document.getElementById('progressPercent');
+            const targetInput = document.getElementById('targetPrice');
+            const durationSelect = document.getElementById('duration');
+            const statusMsg = document.getElementById('statusMsg');
+            const lastUpdateEl = document.getElementById('lastUpdate');
+            const priceDisplay = document.getElementById('priceDisplay');
+
+            const btnSet = document.getElementById('btnSet');
+            const btnToggle = document.getElementById('btnToggle');
+            const btnReset = document.getElementById('btnReset');
+
+            // ----- 狀態 -----
+            let currentPrice = 2485.00;
+            let initialPrice = 2485.00;
+            let targetPrice = null;
+            let duration = 30;
+            let elapsed = 0;
+            let isRunning = false;
+            let isPaused = false;
+            let animationId = null;
+            let lastTimestamp = null;
+            let isComplete = false;
+
+            // 價格變化方向（用於顏色）
+            let lastPrice = 2485.00;
+
+            // ----- 更新 UI 價格 -----
+            function updatePriceDisplay(price, direction) {
+                priceEl.textContent = price.toFixed(2);
+                priceEl.className = 'price';
+                if (direction === 'up') {
+                    priceEl.classList.add('bull');
+                } else if (direction === 'down') {
+                    priceEl.classList.add('bear');
+                }
+            }
+
+            // ----- 更新進度 -----
+            function updateProgress(progress) {
+                const pct = Math.min(progress * 100, 100);
+                progressFill.style.width = pct + '%';
+                progressPercent.textContent = pct.toFixed(0) + '%';
+            }
+
+            // ----- 更新狀態訊息 -----
+            function setStatus(msg, type) {
+                statusMsg.textContent = msg;
+                statusMsg.className = 'status-msg';
+                if (type) statusMsg.classList.add(type);
+            }
+
+            // ----- 更新目標顯示 -----
+            function updateTargetDisplay() {
+                if (targetPrice !== null) {
+                    targetDisplay.textContent = targetPrice.toFixed(2);
+                } else {
+                    targetDisplay.textContent = '—';
+                }
+            }
+
+            // ----- 儲存狀態到 localStorage (供前端讀取) -----
+            function saveState() {
+                const state = {
+                    price: currentPrice,
+                    targetPrice: targetPrice,
+                    duration: duration,
+                    elapsed: elapsed,
+                    isRunning: isRunning,
+                    isPaused: isPaused,
+                    isComplete: isComplete,
+                    initialPrice: initialPrice,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('aurum_backend_state', JSON.stringify(state));
+                // 觸發 storage 事件，讓前端監聽到變化
+                localStorage.setItem('aurum_backend_timestamp', Date.now().toString());
+            }
+
+            // ----- 讀取初始狀態（從 localStorage）-----
+            function loadInitialState() {
+                try {
+                    const raw = localStorage.getItem('aurum_backend_state');
+                    if (raw) {
+                        const data = JSON.parse(raw);
+                        if (data.price) {
+                            currentPrice = data.price;
+                            initialPrice = data.initialPrice || data.price;
+                            targetPrice = data.targetPrice;
+                            duration = data.duration || 30;
+                            elapsed = data.elapsed || 0;
+                            isRunning = data.isRunning || false;
+                            isPaused = data.isPaused || false;
+                            isComplete = data.isComplete || false;
+
+                            // 更新 UI
+                            updatePriceDisplay(currentPrice);
+                            updateTargetDisplay();
+
+                            if (targetPrice !== null) {
+                                const progress = Math.min(elapsed / duration, 1);
+                                updateProgress(progress);
+                                progressLabel.textContent =
+                                    `⏳ 進行中: ${currentPrice.toFixed(2)} → ${targetPrice.toFixed(2)}`;
+                                if (isComplete) {
+                                    setStatus(`✅ 已達到目標價格 ${targetPrice.toFixed(2)}`, 'success');
+                                    progressLabel.textContent = `✅ 已完成: ${targetPrice.toFixed(2)}`;
+                                } else if (isPaused) {
+                                    setStatus('⏸️ 已暫停', 'info');
+                                } else if (isRunning) {
+                                    setStatus(`⏳ 正在模擬: ${(progress * 100).toFixed(1)}%`, 'info');
+                                }
+                            } else {
+                                progressLabel.textContent = '等待設定目標...';
+                                updateProgress(0);
+                            }
+
+                            // 更新按鈕文字
+                            updateToggleButton();
+
+                            // 如果正在運行但沒有 animation，重啟動畫
+                            if (isRunning && !isPaused && !isComplete) {
+                                lastTimestamp = Date.now();
+                                animate();
+                            }
+
+                            return true;
+                        }
+                    }
+                } catch (e) {
+                    console.warn('讀取儲存狀態失敗:', e);
+                }
+                return false;
+            }
+
+            // ----- 更新暫停按鈕 -----
+            function updateToggleButton() {
+                if (isPaused) {
+                    btnToggle.textContent = '▶️';
+                } else {
+                    btnToggle.textContent = '⏸️';
+                }
+                btnToggle.disabled = !isRunning || isComplete;
+            }
+
+            // ----- 動畫循環 (easeInOut) -----
+            function easeInOut(t) {
+                return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+            }
+
+            function animate() {
+                if (!isRunning || isPaused || isComplete) {
+                    animationId = null;
+                    return;
+                }
+
+                const now = Date.now();
+                if (lastTimestamp === null) {
+                    lastTimestamp = now;
+                    animationId = requestAnimationFrame(animate);
+                    return;
+                }
+
+                const delta = (now - lastTimestamp) / 1000;
+                lastTimestamp = now;
+
+                elapsed += delta;
+
+                let progress = Math.min(elapsed / duration, 1);
+                const eased = easeInOut(progress);
+
+                const priceRange = targetPrice - initialPrice;
+                let newPrice = initialPrice + priceRange * eased;
+                newPrice = Math.round(newPrice * 100) / 100;
+
+                // 判斷方向
+                let direction = null;
+                if (newPrice > lastPrice) direction = 'up';
+                else if (newPrice < lastPrice) direction = 'down';
+                lastPrice = newPrice;
+
+                currentPrice = newPrice;
+                updatePriceDisplay(currentPrice, direction);
+                updateProgress(progress);
+
+                progressLabel.textContent =
+                    `⏳ 進行中: ${currentPrice.toFixed(2)} → ${targetPrice.toFixed(2)}`;
+                setStatus(`⏳ 正在模擬: ${(progress * 100).toFixed(1)}%`, 'info');
+
+                // 儲存狀態
+                saveState();
+
+                if (progress >= 1) {
+                    // 達到目標
+                    currentPrice = targetPrice;
+                    isComplete = true;
+                    isRunning = false;
+                    updatePriceDisplay(currentPrice);
+                    updateProgress(1);
+                    progressLabel.textContent = `✅ 已完成: ${targetPrice.toFixed(2)}`;
+                    setStatus(`✅ 已達到目標價格 ${targetPrice.toFixed(2)}`, 'success');
+                    saveState();
+                    updateToggleButton();
+
+                    // 閃爍效果
+                    priceDisplay.classList.add('celebrate');
+                    setTimeout(() => priceDisplay.classList.remove('celebrate'), 1500);
+
+                    animationId = null;
+                    return;
+                }
+
+                animationId = requestAnimationFrame(animate);
+            }
+
+            // ----- 開始模擬 -----
+            function startSimulation() {
+                if (animationId) {
+                    cancelAnimationFrame(animationId);
+                    animationId = null;
+                }
+                isRunning = true;
+                isPaused = false;
+                isComplete = false;
+                lastTimestamp = Date.now();
+                lastPrice = currentPrice;
+                updateToggleButton();
+                animate();
+                saveState();
+            }
+
+            // ----- 設定目標 -----
+            function setTarget(price, dur) {
+                // 停止當前動畫
+                if (animationId) {
+                    cancelAnimationFrame(animationId);
+                    animationId = null;
+                }
+
+                const target = parseFloat(price);
+                if (isNaN(target) || target <= 0) {
+                    setStatus('❌ 請輸入有效的目標價格（大於 0）', 'error');
+                    return false;
+                }
+
+                const durSeconds = parseInt(dur) || 30;
+                if (durSeconds < 1) {
+                    setStatus('❌ 持續時間至少 1 秒', 'error');
+                    return false;
+                }
+
+                // 設定新目標
+                initialPrice = currentPrice;
+                targetPrice = target;
+                duration = durSeconds;
+                elapsed = 0;
+                isComplete = false;
+
+                updateTargetDisplay();
+                updateProgress(0);
+                progressLabel.textContent = `🎯 目標設定: ${currentPrice.toFixed(2)} → ${target.toFixed(2)} (${durSeconds}s)`;
+                setStatus(`🎯 目標已設定: ${durSeconds} 秒內從 ${currentPrice.toFixed(2)} 達到 ${target.toFixed(2)}`, 'info');
+
+                // 開始模擬
+                startSimulation();
+                saveState();
+
+                // 清空輸入框
+                document.getElementById('targetPrice').value = '';
+
+                return true;
+            }
+
+            // ----- 重置 -----
+            function resetPrice() {
+                if (animationId) {
+                    cancelAnimationFrame(animationId);
+                    animationId = null;
+                }
+
+                // 讀取初始價格（從 localStorage 或使用默認值）
+                try {
+                    const raw = localStorage.getItem('aurum_backend_state');
+                    if (raw) {
+                        const data = JSON.parse(raw);
+                        if (data.initialPrice) {
+                            currentPrice = data.initialPrice;
+                        }
+                    }
+                } catch (e) {}
+
+                targetPrice = null;
+                elapsed = 0;
+                isRunning = false;
+                isPaused = false;
+                isComplete = false;
+                lastTimestamp = null;
+
+                updatePriceDisplay(currentPrice);
+                updateTargetDisplay();
+                updateProgress(0);
+                progressLabel.textContent = '等待設定目標...';
+                setStatus('🔄 已重置', 'info');
+                updateToggleButton();
+                saveState();
+
+                // 更新價格顯示
+                priceDisplay.classList.remove('celebrate');
+            }
+
+            // ----- 暫停/繼續 -----
+            function togglePause() {
+                if (!isRunning || isComplete) return;
+
+                isPaused = !isPaused;
+                if (!isPaused) {
+                    lastTimestamp = Date.now();
+                    if (!animationId) {
+                        animate();
+                    }
+                    setStatus('▶️ 已繼續', 'info');
+                } else {
+                    if (animationId) {
+                        cancelAnimationFrame(animationId);
+                        animationId = null;
+                    }
+                    setStatus('⏸️ 已暫停', 'info');
+                }
+                updateToggleButton();
+                saveState();
+            }
+
+            // ----- 儲存到 localStorage 供前端讀取 -----
+            function saveState() {
+                const state = {
+                    price: currentPrice,
+                    targetPrice: targetPrice,
+                    duration: duration,
+                    elapsed: elapsed,
+                    isRunning: isRunning,
+                    isPaused: isPaused,
+                    isComplete: isComplete,
+                    initialPrice: initialPrice,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('aurum_backend_state', JSON.stringify(state));
+                localStorage.setItem('aurum_backend_timestamp', Date.now().toString());
+
+                // 更新最後更新時間
+                const now = new Date();
+                lastUpdateEl.textContent = `最後更新: ${now.toLocaleTimeString()}`;
+            }
+
+            // ----- 監聽其他頁面的變化（跨標籤頁同步）-----
+            window.addEventListener('storage', function(e) {
+                if (e.key === 'aurum_backend_state' && e.newValue) {
+                    try {
+                        const data = JSON.parse(e.newValue);
+                        // 只更新價格顯示，不干擾正在進行的動畫
+                        if (data.price && !isRunning) {
+                            currentPrice = data.price;
+                            updatePriceDisplay(currentPrice);
+                        }
+                        if (data.targetPrice !== undefined) {
+                            targetPrice = data.targetPrice;
+                            updateTargetDisplay();
+                        }
+                        if (data.isComplete !== undefined) {
+                            isComplete = data.isComplete;
+                        }
+                        // 更新進度
+                        if (data.elapsed !== undefined && data.duration) {
+                            const p = Math.min(data.elapsed / data.duration, 1);
+                            updateProgress(p);
+                        }
+                    } catch (e) {}
+                }
+            });
+
+            // ----- 事件綁定 -----
+            btnSet.addEventListener('click', function() {
+                const price = targetInput.value;
+                const dur = durationSelect.value;
+                setTarget(price, dur);
+            });
+
+            // Enter 鍵觸發設定
+            targetInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    btnSet.click();
+                }
+            });
+
+            btnToggle.addEventListener('click', togglePause);
+
+            btnReset.addEventListener('click', resetPrice);
+
+            // 快速設定按鈕
+            document.querySelectorAll('.qb').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const price = this.dataset.price;
+                    const dur = this.dataset.duration;
+                    targetInput.value = price;
+                    durationSelect.value = dur;
+                    setTarget(price, dur);
+                });
+            });
+
+            // ----- 初始化 -----
+            function init() {
+                // 嘗試讀取儲存狀態
+                const loaded = loadInitialState();
+
+                if (!loaded) {
+                    // 默認狀態
+                    currentPrice = 2485.00;
+                    initialPrice = 2485.00;
+                    targetPrice = null;
+                    elapsed = 0;
+                    isRunning = false;
+                    isPaused = false;
+                    isComplete = false;
+                    updatePriceDisplay(currentPrice);
+                    updateTargetDisplay();
+                    updateProgress(0);
+                    progressLabel.textContent = '等待設定目標...';
+                    setStatus('✅ 就緒 - 等待設定價格目標', 'info');
+                    updateToggleButton();
+                    saveState();
+                }
+
+                // 每秒自動儲存一次（保持同步）
+                setInterval(function() {
+                    if (isRunning || isPaused) {
+                        saveState();
+                    }
+                }, 1000);
+
+                console.log('✅ AURUM 後台控制已啟動');
+                console.log(`📊 當前價格: ${currentPrice.toFixed(2)}`);
+                console.log('💡 設定目標價格後，前端將自動同步');
+            }
+
+            init();
+
+            // ----- 暴露 API 到全局（方便調試）-----
+            window.AURUM_BACKEND = {
+                currentPrice: () => currentPrice,
+                targetPrice: () => targetPrice,
+                setTarget: setTarget,
+                reset: resetPrice,
+                toggle: togglePause,
+                isRunning: () => isRunning,
+                isPaused: () => isPaused,
+                isComplete: () => isComplete,
+                saveState: saveState,
+            };
+
+            // 鍵盤快捷鍵
+            document.addEventListener('keydown', function(e) {
+                // Ctrl+Enter 設定目標
+                if (e.ctrlKey && e.key === 'Enter') {
+                    btnSet.click();
+                }
+                // 空格 暫停/繼續
+                if (e.key === ' ' && !e.target.matches('input, select, button')) {
+                    e.preventDefault();
+                    btnToggle.click();
+                }
+                // R 重置
+                if (e.key === 'r' && !e.target.matches('input, select, button')) {
+                    btnReset.click();
+                }
+            });
+
+        })();
+    </script>
+
+</body>
+</html>
