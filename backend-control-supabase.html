@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AURUM 後台控制面板 (Supabase)</title>
+    <style>
+        /* 樣式與之前相同，省略... */
+    </style>
+</head>
+<body>
+    <!-- HTML 結構與之前相同，省略... -->
+    
+    <script type="importmap">
+    {
+        "imports": {
+            "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.57.4"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import { createClient } from '@supabase/supabase-js';
+
+        // ============================================================
+        // Supabase 配置
+        // ============================================================
+        const supabaseUrl = 'https://mjdodjohycnegtbqkdms.supabase.co';
+        const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1qZG9kam9oeWNuZWd0YnFrZG1zIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODc4NTcyNTMsImV4cCI6MjEwMzQzMzI1M30.s2s0BACICEKAAAOoifZhdZixvEh9bnm0gpeUklp_xY4';
+
+        const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+        // ============================================================
+        // DOM 元素
+        // ============================================================
+        const priceEl = document.getElementById('currentPrice');
+        const targetDisplay = document.getElementById('targetDisplay');
+        const progressDisplay = document.getElementById('progressDisplay');
+        const progressFill = document.getElementById('progressFill');
+        const progressLabel = document.getElementById('progressLabel');
+        const progressPercent = document.getElementById('progressPercent');
+        const targetInput = document.getElementById('targetPrice');
+        const durationSelect = document.getElementById('duration');
+        const statusMsg = document.getElementById('statusMsg');
+        const btnSet = document.getElementById('btnSet');
+        const btnToggle = document.getElementById('btnToggle');
+        const btnReset = document.getElementById('btnReset');
+
+        // ============================================================
+        // 狀態
+        // ============================================================
+        let currentPrice = 2485.00;
+        let targetPrice = null;
+        let duration = 30;
+        let elapsed = 0;
+        let isRunning = false;
+        let isPaused = false;
+        let isComplete = false;
+        let initialPrice = 2485.00;
+        let animationId = null;
+        let lastTimestamp = null;
+        let lastPrice = 2485.00;
+        let rowId = null;  // 數據庫記錄 ID
+
+        // ============================================================
+        // UI 更新函數
+        // ============================================================
+        function updatePriceDisplay(price, direction) {
+            priceEl.textContent = price.toFixed(2);
+            priceEl.className = 'price';
+            if (direction === 'up') priceEl.classList.add('bull');
+            else if (direction === 'down') priceEl.classList.add('bear');
+        }
+
+        function updateProgress(progress) {
+            const pct = Math.min(progress * 100, 100);
+            progressFill.style.width = pct + '%';
+            progressPercent.textContent = pct.toFixed(0) + '%';
+        }
+
+        function setStatus(msg, type) {
+            statusMsg.textContent = msg;
+            statusMsg.className = 'status-msg';
+            if (type) statusMsg.classList.add(type);
+        }
+
+        function updateTargetDisplay() {
+            targetDisplay.textContent = targetPrice !== null ? targetPrice.toFixed(2) : '—';
+        }
+
+        function updateToggleButton() {
+            if (isPaused) {
+                btnToggle.textContent = '▶️';
+            } else {
+                btnToggle.textContent = '⏸️';
+            }
+            btnToggle.disabled = !isRunning || isComplete;
+        }
+
+        // ============================================================
+        // 儲存到 Supabase
+        // ============================================================
+        async function saveToSupabase() {
+            if (!rowId) return;
+
+            const data = {
+                current_price: currentPrice,
+                target_price: targetPrice,
+                duration_seconds: duration,
+                elapsed_seconds: elapsed,
+                is_running: isRunning,
+                is_paused: isPaused,
+                is_complete: isComplete,
+                initial_price: initialPrice,
+                updated_at: new Date().toISOString()
+            };
+
+            try {
+                const { error } = await supabase
+                    .from('price_control')
+                    .update(data)
+                    .eq('id', rowId);
+
+                if (error) {
+                    console.error('儲存到 Supabase 失敗:', error);
+                }
+            } catch (err) {
+                console.error('儲存異常:', err);
+            }
+        }
+
+        // ============================================================
+        // 從 Supabase 讀取初始狀態
+        // ============================================================
+        async function loadFromSupabase() {
+            try {
+                const { data, error } = await supabase
+                    .from('price_control')
+                    .select('*')
+                    .limit(1)
+                    .order('id', { ascending: true });
+
+                if (error) {
+                    console.error('讀取失敗:', error);
+                    return false;
+                }
+
+                if (data && data.length > 0) {
+                    const record = data[0];
+                    rowId = record.id;
+                    currentPrice = record.current_price || 2485.00;
+                    targetPrice = record.target_price;
+                    duration = record.duration_seconds || 30;
+                    elapsed = record.elapsed_seconds || 0;
+                    isRunning = record.is_running || false;
+                    isPaused = record.is_paused || false;
+                    isComplete = record.is_complete || false;
+                    initialPrice = record.initial_price || currentPrice;
+                    lastPrice = currentPrice;
+
+                    // 更新 UI
+                    updatePriceDisplay(currentPrice);
+                    updateTargetDisplay();
+
+                    if (targetPrice !== null) {
+                        const progress = Math.min(elapsed / duration, 1);
+                        updateProgress(progress);
+                        progressLabel.textContent = 
+                            `⏳ 進行中: ${currentPrice.toFixed(2)} → ${targetPrice.toFixed(2)}`;
+                        
+                        if (isComplete) {
+                            setStatus(`✅ 已達到目標價格 ${targetPrice.toFixed(2)}`, 'success');
+                            progressLabel.textContent = `✅ 已完成: ${targetPrice.toFixed(2)}`;
+                        } else if (isPaused) {
+                            setStatus('⏸️ 已暫停', 'info');
+                        } else if (isRunning) {
+                            setStatus(`⏳ 正在模擬: ${(progress * 100).toFixed(1)}%`, 'info');
+                        }
+                    } else {
+                        progressLabel.textContent = '等待設定目標...';
+                        updateProgress(0);
+                    }
+
+                    updateToggleButton();
+
+                    // 如果正在運行，重啟動畫
+                    if (isRunning && !isPaused && !isComplete) {
+                        lastTimestamp = Date.now();
+                        animate();
+                    }
+
+                    return true;
+                }
+
+                return false;
+            } catch (err) {
+                console.error('讀取異常:', err);
+                return false;
+            }
+        }
+
+        // ============================================================
+        // 訂閱 Supabase Realtime（監聽其他頁面的變化）
+        // ============================================================
+        function subscribeToChanges() {
+            supabase
+                .channel('price_control_changes')
+                .on(
+                    'postgres_changes',
+                    {
+                        event: 'UPDATE',
+                        schema: 'public',
+                        table: 'price_control'
+                    },
+                    (payload) => {
+                        const record = payload.new;
+                        // 更新本地狀態（但不覆蓋正在運行的動畫）
+                        if (!isRunning || isPaused) {
+                            currentPrice = record.current_price;
+                            targetPrice = record.target_price;
+                            duration = record.duration_seconds;
+                            elapsed = record.elapsed_seconds;
+                            isRunning = record.is_running;
+                            isPaused = record.is_paused;
+                            isComplete = record.is_complete;
+                            initialPrice = record.initial_price;
+                            
+                            updatePriceDisplay(currentPrice);
+                            updateTargetDisplay();
+                            const progress = Math.min(elapsed / duration, 1);
+                            updateProgress(progress);
+                            updateToggleButton();
+                        }
+                    }
+                )
+                .subscribe((status) => {
+                    console.log('📡 Supabase Realtime 狀態:', status);
+                });
+        }
+
+        // ============================================================
+        // 動畫函數 (easeInOut)
+        // ============================================================
+        function easeInOut(t) {
+            return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+        }
+
+        function animate() {
+            if (!isRunning || isPaused || isComplete) {
+                animationId = null;
+                return;
+            }
+
+            const now = Date.now();
+            if (lastTimestamp === null) {
+                lastTimestamp = now;
+                animationId = requestAnimationFrame(animate);
+                return;
+            }
+
+            const delta = (now - lastTimestamp) / 1000;
+            lastTimestamp = now;
+            elapsed += delta;
+
+            let progress = Math.min(elapsed / duration, 1);
+            const eased = easeInOut(progress);
+
+            const priceRange = targetPrice - initialPrice;
+            let newPrice = initialPrice + priceRange * eased;
+            newPrice = Math.round(newPrice * 100) / 100;
+
+            let direction = null;
+            if (newPrice > lastPrice) direction = 'up';
+            else if (newPrice < lastPrice) direction = 'down';
+            lastPrice = newPrice;
+
+            currentPrice = newPrice;
+            updatePriceDisplay(currentPrice, direction);
+            updateProgress(progress);
+            progressLabel.textContent = 
+                `⏳ 進行中: ${currentPrice.toFixed(2)} → ${targetPrice.toFixed(2)}`;
+            setStatus(`⏳ 正在模擬: ${(progress * 100).toFixed(1)}%`, 'info');
+
+            // 儲存到 Supabase（每幀都儲存，實現實時同步）
+            saveToSupabase();
+
+            if (progress >= 1) {
+                currentPrice = targetPrice;
+                isComplete = true;
+                isRunning = false;
+                updatePriceDisplay(currentPrice);
+                updateProgress(1);
+                progressLabel.textContent = `✅ 已完成: ${targetPrice.toFixed(2)}`;
+                setStatus(`✅ 已達到目標價格 ${targetPrice.toFixed(2)}`, 'success');
+                saveToSupabase();
+                updateToggleButton();
+
+                const priceDisplay = document.getElementById('priceDisplay');
+                priceDisplay.classList.add('celebrate');
+                setTimeout(() => priceDisplay.classList.remove('celebrate'), 1500);
+
+                animationId = null;
+                return;
+            }
+
+            animationId = requestAnimationFrame(animate);
+        }
+
+        // ============================================================
+        // 控制函數
+        // ============================================================
+        async function setTarget(price, dur) {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+
+            const target = parseFloat(price);
+            if (isNaN(target) || target <= 0) {
+                setStatus('❌ 請輸入有效的目標價格（大於 0）', 'error');
+                return false;
+            }
+
+            const durSeconds = parseInt(dur) || 30;
+            if (durSeconds < 1) {
+                setStatus('❌ 持續時間至少 1 秒', 'error');
+                return false;
+            }
+
+            initialPrice = currentPrice;
+            targetPrice = target;
+            duration = durSeconds;
+            elapsed = 0;
+            isComplete = false;
+
+            updateTargetDisplay();
+            updateProgress(0);
+            progressLabel.textContent = 
+                `🎯 目標設定: ${currentPrice.toFixed(2)} → ${target.toFixed(2)} (${durSeconds}s)`;
+            setStatus(`🎯 目標已設定: ${durSeconds} 秒內從 ${currentPrice.toFixed(2)} 達到 ${target.toFixed(2)}`, 'info');
+
+            // 先儲存到 Supabase
+            await saveToSupabase();
+
+            // 開始模擬
+            isRunning = true;
+            isPaused = false;
+            lastTimestamp = Date.now();
+            lastPrice = currentPrice;
+            updateToggleButton();
+            animate();
+            saveToSupabase();
+
+            targetInput.value = '';
+            return true;
+        }
+
+        async function resetPrice() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+
+            currentPrice = initialPrice;
+            targetPrice = null;
+            elapsed = 0;
+            isRunning = false;
+            isPaused = false;
+            isComplete = false;
+            lastTimestamp = null;
+
+            updatePriceDisplay(currentPrice);
+            updateTargetDisplay();
+            updateProgress(0);
+            progressLabel.textContent = '等待設定目標...';
+            setStatus('🔄 已重置', 'info');
+            updateToggleButton();
+            await saveToSupabase();
+        }
+
+        function togglePause() {
+            if (!isRunning || isComplete) return;
+
+            isPaused = !isPaused;
+            if (!isPaused) {
+                lastTimestamp = Date.now();
+                if (!animationId) {
+                    animate();
+                }
+                setStatus('▶️ 已繼續', 'info');
+            } else {
+                if (animationId) {
+                    cancelAnimationFrame(animationId);
+                    animationId = null;
+                }
+                setStatus('⏸️ 已暫停', 'info');
+            }
+            updateToggleButton();
+            saveToSupabase();
+        }
+
+        // ============================================================
+        // 事件綁定
+        // ============================================================
+        btnSet.addEventListener('click', () => {
+            const price = targetInput.value;
+            const dur = durationSelect.value;
+            setTarget(price, dur);
+        });
+
+        targetInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') btnSet.click();
+        });
+
+        btnToggle.addEventListener('click', togglePause);
+        btnReset.addEventListener('click', resetPrice);
+
+        // 快速設定按鈕
+        document.querySelectorAll('.qb').forEach((btn) => {
+            btn.addEventListener('click', function() {
+                targetInput.value = this.dataset.price;
+                durationSelect.value = this.dataset.duration;
+                setTarget(this.dataset.price, this.dataset.duration);
+            });
+        });
+
+        // ============================================================
+        // 初始化
+        // ============================================================
+        async function init() {
+            // 讀取 Supabase 狀態
+            const loaded = await loadFromSupabase();
+
+            if (!loaded) {
+                // 如果沒有數據，創建一條
+                try {
+                    const { data, error } = await supabase
+                        .from('price_control')
+                        .insert([
+                            { 
+                                current_price: 2485.00,
+                                initial_price: 2485.00
+                            }
+                        ])
+                        .select();
+
+                    if (!error && data && data.length > 0) {
+                        rowId = data[0].id;
+                        console.log('✅ 已創建價格控制記錄');
+                    }
+                } catch (err) {
+                    console.error('創建記錄失敗:', err);
+                }
+            }
+
+            // 訂閱 Realtime
+            subscribeToChanges();
+
+            console.log('✅ AURUM 後台控制已啟動 (Supabase)');
+            console.log(`📊 當前價格: ${currentPrice.toFixed(2)}`);
+        }
+
+        init();
+
+        // 暴露 API 到全局
+        window.AURUM_BACKEND = {
+            currentPrice: () => currentPrice,
+            targetPrice: () => targetPrice,
+            setTarget,
+            reset: resetPrice,
+            toggle: togglePause,
+            isRunning: () => isRunning,
+            isPaused: () => isPaused,
+            saveToSupabase
+        };
+
+        // 鍵盤快捷鍵
+        document.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 'Enter') btnSet.click();
+            if (e.key === ' ' && !e.target.matches('input, select, button')) {
+                e.preventDefault();
+                btnToggle.click();
+            }
+            if (e.key === 'r' && !e.target.matches('input, select, button')) {
+                btnReset.click();
+            }
+        });
+
+        console.log('💡 按 Ctrl+Enter 設定目標，空格暫停/繼續，R 重置');
+    </script>
+</body>
+</html>
