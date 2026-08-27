@@ -234,7 +234,6 @@ export function MainChart({
     mainSeriesRef.current = series;
 
     // Fit content
-    chart.timeScale().fitContent();
   }, [chartType, candles]);
 
   // Volume series
