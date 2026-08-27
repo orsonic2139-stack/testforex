@@ -85,65 +85,81 @@ export function useMarketData(timeframe: Timeframe) {
   }, []);
 
   // ============================================================
-  // 初始化時從 Supabase 讀取價格
-  // ============================================================
-  useEffect(() => {
-    const loadInitialPrice = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('price_control')
-          .select('current_price, is_running, target_price, is_complete')
-          .limit(1)
-          .order('id', { ascending: true });
+// 初始化時從 Supabase 讀取價格
+// ============================================================
+useEffect(() => {
+  const loadInitialPrice = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('price_control')
+        .select('current_price, is_running, target_price, is_complete')
+        .limit(1)
+        .order('id', { ascending: true });
 
-        if (error) {
-          console.warn('讀取 Supabase 初始價格失敗:', error.message);
-          return;
-        }
+      if (error) {
+        console.warn('讀取 Supabase 初始價格失敗:', error.message);
+        return;
+      }
 
-        if (data && data.length > 0) {
-          const record = data[0];
-          if (record.current_price) {
-            console.log('📊 從 Supabase 載入初始價格:', record.current_price);
-            lastPriceRef.current = record.current_price;
-            
-            if (record.is_running || record.is_complete) {
-              isBackendControlledRef.current = true;
-              setIsBackendControlled(true);
+      if (data && data.length > 0) {
+        const record = data[0];
+        if (record.current_price) {
+          console.log('📊 從 Supabase 載入初始價格:', record.current_price);
+          lastPriceRef.current = record.current_price;
+          
+          // 🔥 關鍵修復：同時更新 candles 的最後一根 K 線
+          setCandles((prevCandles) => {
+            if (prevCandles.length === 0) return prevCandles;
+            const updatedCandles = [...prevCandles];
+            const lastCandle = updatedCandles[updatedCandles.length - 1];
+            if (lastCandle) {
+              updatedCandles[updatedCandles.length - 1] = {
+                ...lastCandle,
+                close: record.current_price,
+                high: Math.max(lastCandle.high, record.current_price),
+                low: Math.min(lastCandle.low, record.current_price),
+              };
             }
-            
-            setQuote((prev) => {
-              if (!prev) {
-                return {
-                  bid: round2(record.current_price - 0.18),
-                  ask: round2(record.current_price + 0.18),
-                  last: record.current_price,
-                  spread: 0.36,
-                  change: 0,
-                  changePercent: 0,
-                  open: record.current_price,
-                  high: record.current_price,
-                  low: record.current_price,
-                  previousClose: record.current_price,
-                  timestamp: Date.now(),
-                };
-              }
+            return updatedCandles;
+          });
+          
+          if (record.is_running || record.is_complete) {
+            isBackendControlledRef.current = true;
+            setIsBackendControlled(true);
+          }
+          
+          setQuote((prev) => {
+            if (!prev) {
               return {
-                ...prev,
-                last: record.current_price,
                 bid: round2(record.current_price - 0.18),
                 ask: round2(record.current_price + 0.18),
+                last: record.current_price,
+                spread: 0.36,
+                change: 0,
+                changePercent: 0,
+                open: record.current_price,
+                high: record.current_price,
+                low: record.current_price,
+                previousClose: record.current_price,
+                timestamp: Date.now(),
               };
-            });
-          }
+            }
+            return {
+              ...prev,
+              last: record.current_price,
+              bid: round2(record.current_price - 0.18),
+              ask: round2(record.current_price + 0.18),
+            };
+          });
         }
-      } catch (err) {
-        console.warn('讀取 Supabase 初始價格異常:', err);
       }
-    };
+    } catch (err) {
+      console.warn('讀取 Supabase 初始價格異常:', err);
+    }
+  };
 
-    loadInitialPrice();
-  }, []);
+  loadInitialPrice();
+}, []);
 
   // ============================================================
   // Fetch historical candles when timeframe changes
