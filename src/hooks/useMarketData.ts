@@ -66,7 +66,6 @@ export function useMarketData(timeframe: Timeframe) {
 
       if (data && data.length > 0) {
         const record = data[0];
-        // 如果後台正在運行，使用後台價格
         if (record.is_running || record.is_complete) {
           isBackendControlledRef.current = true;
           return {
@@ -81,6 +80,62 @@ export function useMarketData(timeframe: Timeframe) {
       console.warn('讀取 Supabase 價格異常:', err);
     }
     return null;
+  }, []);
+
+  // ============================================================
+  // 初始化時從 Supabase 讀取價格
+  // ============================================================
+  useEffect(() => {
+    const loadInitialPrice = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('price_control')
+          .select('current_price, is_running, target_price')
+          .limit(1)
+          .order('id', { ascending: true });
+
+        if (error) {
+          console.warn('讀取 Supabase 初始價格失敗:', error.message);
+          return;
+        }
+
+        if (data && data.length > 0) {
+          const record = data[0];
+          if (record.current_price) {
+            console.log('📊 從 Supabase 載入初始價格:', record.current_price);
+            lastPriceRef.current = record.current_price;
+            
+            setQuote((prev) => {
+              if (!prev) {
+                return {
+                  bid: round2(record.current_price - 0.18),
+                  ask: round2(record.current_price + 0.18),
+                  last: record.current_price,
+                  spread: 0.36,
+                  change: 0,
+                  changePercent: 0,
+                  open: record.current_price,
+                  high: record.current_price,
+                  low: record.current_price,
+                  previousClose: record.current_price,
+                  timestamp: Date.now(),
+                };
+              }
+              return {
+                ...prev,
+                last: record.current_price,
+                bid: round2(record.current_price - 0.18),
+                ask: round2(record.current_price + 0.18),
+              };
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('讀取 Supabase 初始價格異常:', err);
+      }
+    };
+
+    loadInitialPrice();
   }, []);
 
   // ============================================================
@@ -117,11 +172,9 @@ export function useMarketData(timeframe: Timeframe) {
 
     const initQuote = async () => {
       try {
-        // 1. 先嚐試讀取 Supabase 後台價格
         const backendData = await loadBackendPrice();
         
         if (backendData && backendData.price) {
-          // 使用後台價格
           const price = backendData.price;
           lastPriceRef.current = price;
           isBackendControlledRef.current = true;
@@ -142,7 +195,6 @@ export function useMarketData(timeframe: Timeframe) {
           return;
         }
 
-        // 2. 如果沒有後台價格，使用 Provider 的 Quote
         const q = await providerRef.current.getCurrentQuote();
         if (cancelled || !q) return;
         setQuote(q);
@@ -179,6 +231,8 @@ export function useMarketData(timeframe: Timeframe) {
             const newPrice = record.current_price;
             const prevPrice = lastPriceRef.current;
             
+            console.log('📡 Supabase 價格更新:', newPrice);
+            
             // 更新價格方向
             if (prevPrice !== null) {
               if (newPrice > prevPrice) {
@@ -195,6 +249,43 @@ export function useMarketData(timeframe: Timeframe) {
             
             lastPriceRef.current = newPrice;
             isBackendControlledRef.current = true;
+
+            // 🔥 更新最後一根 K 線（讓圖表即時反應）
+            setCandles((prevCandles) => {
+              if (prevCandles.length === 0) return prevCandles;
+              
+              const updatedCandles = [...prevCandles];
+              const lastCandle = updatedCandles[updatedCandles.length - 1];
+              
+              if (lastCandle) {
+                // 檢查是否需要創建新 K 線（超過 1 分鐘）
+                const now = Math.floor(Date.now() / 1000);
+                const candleAge = now - lastCandle.time;
+                
+                // 如果 K 線超過 1 分鐘，創建新 K 線
+                if (candleAge > 60) {
+                  // 創建新 K 線
+                  updatedCandles.push({
+                    time: Math.floor(now / 60) * 60, // 對齊到分鐘
+                    open: newPrice,
+                    high: newPrice,
+                    low: newPrice,
+                    close: newPrice,
+                    volume: 0,
+                  });
+                } else {
+                  // 更新最後一根 K 線
+                  updatedCandles[updatedCandles.length - 1] = {
+                    ...lastCandle,
+                    close: newPrice,
+                    high: Math.max(lastCandle.high, newPrice),
+                    low: Math.min(lastCandle.low, newPrice),
+                  };
+                }
+              }
+              
+              return updatedCandles;
+            });
 
             // 更新 Quote
             setQuote((prevQuote) => {
@@ -229,7 +320,6 @@ export function useMarketData(timeframe: Timeframe) {
               };
             });
 
-            // 如果後台模擬完成，更新狀態
             if (record.is_complete) {
               console.log('✅ 後台價格目標已達成:', newPrice);
             }
@@ -256,7 +346,6 @@ export function useMarketData(timeframe: Timeframe) {
     const callback = (update: PriceUpdate) => {
       // 如果後台正在控制，跳過 Provider 的價格更新
       if (isBackendControlledRef.current) {
-        // 但還是更新 lastUpdate 以便顯示
         setLastUpdate(update);
         return;
       }
@@ -373,7 +462,6 @@ export function useMarketData(timeframe: Timeframe) {
     priceDirection,
     refresh,
     provider: providerRef.current,
-    // 新增導出
     isBackendControlled: isBackendControlledRef.current,
     enableBackendControl,
     disableBackendControl,
