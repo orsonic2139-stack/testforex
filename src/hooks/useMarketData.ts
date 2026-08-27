@@ -48,6 +48,8 @@ export function useMarketData(timeframe: Timeframe) {
   const dirTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isBackendControlledRef = useRef<boolean>(false);
   const [isBackendControlled, setIsBackendControlled] = useState(false);
+  const randomWalkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isMountedRef = useRef(true);
 
   // ============================================================
   // 讀取 Supabase 後台價格
@@ -113,7 +115,6 @@ export function useMarketData(timeframe: Timeframe) {
             setIsBackendControlled(true);
           }
           
-          // 🔥 更新 candles 的最後一根 K 線
           setCandles((prevCandles) => {
             if (prevCandles.length === 0) return prevCandles;
             const updatedCandles = [...prevCandles];
@@ -229,98 +230,102 @@ export function useMarketData(timeframe: Timeframe) {
   // 訂閱 Supabase Realtime + 隨機浮動（背景價格變動）
   // ============================================================
   useEffect(() => {
-    let randomWalkInterval: ReturnType<typeof setInterval> | null = null;
+    isMountedRef.current = true;
 
-    // 啟動隨機浮動（只在沒有後台控制時）
-const startRandomWalk = () => {
-  if (randomWalkInterval) {
-    clearInterval(randomWalkInterval);
-  }
-  
-  randomWalkInterval = setInterval(async () => {
-    try {
-      // 檢查 Supabase 中是否有正在運行的後台控制
-      const { data } = await supabase
-        .from('price_control')
-        .select('is_running, is_complete')
-        .limit(1)
-        .order('id', { ascending: true });
+    // 啟動隨機浮動
+    const startRandomWalk = () => {
+      if (randomWalkIntervalRef.current) {
+        clearInterval(randomWalkIntervalRef.current);
+        randomWalkIntervalRef.current = null;
+      }
       
-      if (data && data.length > 0) {
-        const record = data[0];
+      console.log('📊 啟動隨機浮動...');
+      
+      randomWalkIntervalRef.current = setInterval(async () => {
+        if (!isMountedRef.current) return;
         
-        // ✅ 只有當 is_running 為 true 時才跳過浮動
-        if (record.is_running === true) {
-          return;  // 後台控制進行中，跳過
-        }
-        
-        // ✅ 如果 is_complete 為 true，自動重置標誌
-        if (record.is_complete === true) {
-          console.log('✅ 後台控制已完成，自動重置標誌');
-          await supabase
+        try {
+          // 檢查 Supabase 中是否有正在運行的後台控制
+          const { data } = await supabase
+            .from('price_control')
+            .select('is_running, is_complete')
+            .limit(1)
+            .order('id', { ascending: true });
+          
+          if (data && data.length > 0) {
+            const record = data[0];
+            
+            // 只有當 is_running 為 true 時才跳過浮動
+            if (record.is_running === true) {
+              return;
+            }
+            
+            // 如果 is_complete 為 true，自動重置標誌
+            if (record.is_complete === true) {
+              console.log('✅ 後台控制已完成，自動重置標誌');
+              await supabase
+                .from('price_control')
+                .update({
+                  is_complete: false,
+                  is_running: false,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('id', 1);
+              isBackendControlledRef.current = false;
+              setIsBackendControlled(false);
+            }
+          }
+          
+          // 隨機浮動 (±0.3)
+          const currentPrice = lastPriceRef.current || 2485;
+          const shock = (Math.random() - 0.5) * 0.6;
+          const newPrice = Math.max(50, currentPrice + shock);
+          const roundedPrice = Math.round(newPrice * 100) / 100;
+          
+          // 更新 Supabase
+          const { error } = await supabase
             .from('price_control')
             .update({
-              is_complete: false,
-              is_running: false,
+              current_price: roundedPrice,
               updated_at: new Date().toISOString()
             })
             .eq('id', 1);
-          // 更新本地狀態
-          isBackendControlledRef.current = false;
-          setIsBackendControlled(false);
-        }
-      }
-      
-      // 隨機浮動 (±0.3)
-      const currentPrice = lastPriceRef.current || 2485;
-      const shock = (Math.random() - 0.5) * 0.6;
-      const newPrice = Math.max(50, currentPrice + shock);
-      const roundedPrice = Math.round(newPrice * 100) / 100;
-      
-      // 更新 Supabase
-      const { error } = await supabase
-        .from('price_control')
-        .update({
-          current_price: roundedPrice,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', 1);
-      
-      if (!error) {
-        lastPriceRef.current = roundedPrice;
-        
-        // 更新本地狀態
-        setQuote((prev) => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            last: roundedPrice,
-            bid: round2(roundedPrice - 0.18),
-            ask: round2(roundedPrice + 0.18),
-          };
-        });
-        
-        // 更新 candles
-        setCandles((prev) => {
-          if (prev.length === 0) return prev;
-          const updated = [...prev];
-          const last = updated[updated.length - 1];
-          if (last) {
-            updated[updated.length - 1] = {
-              ...last,
-              close: roundedPrice,
-              high: Math.max(last.high, roundedPrice),
-              low: Math.min(last.low, roundedPrice),
-            };
+          
+          if (!error && isMountedRef.current) {
+            lastPriceRef.current = roundedPrice;
+            
+            // 更新本地狀態
+            setQuote((prev) => {
+              if (!prev) return prev;
+              return {
+                ...prev,
+                last: roundedPrice,
+                bid: round2(roundedPrice - 0.18),
+                ask: round2(roundedPrice + 0.18),
+              };
+            });
+            
+            // 更新 candles
+            setCandles((prev) => {
+              if (prev.length === 0) return prev;
+              const updated = [...prev];
+              const last = updated[updated.length - 1];
+              if (last) {
+                updated[updated.length - 1] = {
+                  ...last,
+                  close: roundedPrice,
+                  high: Math.max(last.high, roundedPrice),
+                  low: Math.min(last.low, roundedPrice),
+                };
+              }
+              return updated;
+            });
           }
-          return updated;
-        });
-      }
-    } catch (err) {
-      console.warn('隨機浮動錯誤:', err);
-    }
-  }, 1500);
-};
+        } catch (err) {
+          console.warn('隨機浮動錯誤:', err);
+        }
+      }, 1500);
+    };
 
     // Supabase Realtime 訂閱
     const channel = supabase
@@ -355,7 +360,7 @@ const startRandomWalk = () => {
           lastPriceRef.current = newPrice;
           
           // 檢查是否為後台控制
-          if (record.is_running || record.is_complete) {
+          if (record.is_running === true) {
             isBackendControlledRef.current = true;
             setIsBackendControlled(true);
           } else {
@@ -363,7 +368,7 @@ const startRandomWalk = () => {
             setIsBackendControlled(false);
           }
           
-          // 🔥 更新 candles 的最後一根 K 線
+          // 更新 candles 的最後一根 K 線
           setCandles((prev) => {
             if (prev.length === 0) return prev;
             const updated = [...prev];
@@ -407,21 +412,30 @@ const startRandomWalk = () => {
           });
 
           // 如果後台控制完成，恢復隨機浮動
-          if (record.is_complete) {
+          if (record.is_complete === true) {
             console.log('✅ 後台目標達成，恢復隨機浮動');
             isBackendControlledRef.current = false;
             setIsBackendControlled(false);
+            supabase
+              .from('price_control')
+              .update({
+                is_complete: false,
+                is_running: false,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', 1)
+              .then(() => {
+                console.log('🔄 Supabase 標誌已重置');
+              });
           }
         }
       )
       .subscribe((status) => {
         if (status === 'SUBSCRIBED') {
           console.log('📡 Supabase Realtime 已訂閱 price_control 表');
+          startRandomWalk();
         }
       });
-
-    // 啟動隨機浮動
-    startRandomWalk();
 
     // 市場會話資訊更新
     const sessionInterval = setInterval(() => {
@@ -435,9 +449,11 @@ const startRandomWalk = () => {
     }, 5000);
 
     return () => {
+      isMountedRef.current = false;
       supabase.removeChannel(channel);
-      if (randomWalkInterval) {
-        clearInterval(randomWalkInterval);
+      if (randomWalkIntervalRef.current) {
+        clearInterval(randomWalkIntervalRef.current);
+        randomWalkIntervalRef.current = null;
       }
       if (dirTimeoutRef.current) {
         clearTimeout(dirTimeoutRef.current);
@@ -453,7 +469,6 @@ const startRandomWalk = () => {
     const provider = providerRef.current;
     
     const callback = (update: PriceUpdate) => {
-      // 如果後台正在控制，跳過 Provider 的價格更新
       if (isBackendControlledRef.current) {
         setLastUpdate(update);
         return;
@@ -477,7 +492,6 @@ const startRandomWalk = () => {
       
       lastPriceRef.current = update.last;
 
-      // 更新 K 線
       setCandles((prevCandles) => {
         if (prevCandles.length === 0) return prevCandles;
         const updatedCandles = [...prevCandles];

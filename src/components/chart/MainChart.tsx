@@ -233,7 +233,7 @@ export function MainChart({
       chart.timeScale().fitContent();
       isFirstLoadRef.current = false;
     }
-  }, [chartType]);
+  }, [chartType, candles]);
 
   // Volume series
   useEffect(() => {
@@ -522,32 +522,6 @@ export function MainChart({
       });
     });
   }, [candles, onCrosshairMove]);
-
-  // ============================================================
-  // 🔥 增量更新 candles（不重建整個圖表）- 實現即時更新
-  // ============================================================
-  useEffect(() => {
-    if (!mainSeriesRef.current || candles.length === 0) return;
-    
-    const series = mainSeriesRef.current;
-    const lastCandle = candles[candles.length - 1];
-    
-    if (!lastCandle) return;
-    
-    try {
-      // 更新最後一根 K 線
-      series.update({
-        time: lastCandle.time as UTCTimestamp,
-        open: lastCandle.open,
-        high: lastCandle.high,
-        low: lastCandle.low,
-        close: lastCandle.close,
-      } as any);
-    } catch {
-      // 如果更新失敗（可能是新 K 線），忽略錯誤
-      // 下次 chartType 變化時會重建
-    }
-  }, [candles]);
 
   // Expose zoom/reset via chart API
   useEffect(() => {
